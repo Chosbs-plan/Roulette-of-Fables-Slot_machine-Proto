@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎰 잔혹동화 슬롯머신 🎰</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        
+        /* 이모지 색상 필터 */
+        .symbol-red {
+            filter: hue-rotate(0deg) saturate(2) brightness(0.9) contrast(1.2);
+            text-shadow: 0 0 8px #ff0000;
+        }
+        
+        .symbol-black {
+            filter: grayscale(1) brightness(0.4) contrast(1.5);
+            text-shadow: 0 0 8px #000000;
+        }
+        
+        .symbol-gold {
+            filter: hue-rotate(45deg) saturate(2) brightness(1.3) contrast(1.1);
+            text-shadow: 0 0 8px #ffd700;
+        }
+        
+        .symbol-wild {
+            filter: hue-rotate(300deg) saturate(2) brightness(1.2);
+            text-shadow: 0 0 8px #ff69b4;
+            animation: rainbow 2s linear infinite;
+        }
+        
+        @keyframes rainbow {
+            0% { filter: hue-rotate(0deg) saturate(2) brightness(1.2); }
+            25% { filter: hue-rotate(90deg) saturate(2) brightness(1.2); }
+            50% { filter: hue-rotate(180deg) saturate(2) brightness(1.2); }
+            75% { filter: hue-rotate(270deg) saturate(2) brightness(1.2); }
+            100% { filter: hue-rotate(360deg) saturate(2) brightness(1.2); }
+        }
+        
+        .animate-ping {
+            animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+        
+        @keyframes ping {
+            75%, 100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+        
+        .animate-bounce {
+            animation: bounce 1s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 100% {
+                transform: translateY(-25%);
+                animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+            }
+            50% {
+                transform: none;
+                animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+            }
+        }
+        
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .5;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useCallback, useEffect } = React;
+
+        // 문양 정의
+        const SYMBOLS = {
+            MUSHROOM: { id: 'mushroom', emoji: '🍄', name: '붉은 버섯', probability: 0.25, reward: 5, color: 'red' },
+            BLACK_FEATHER: { id: 'blackFeather', emoji: '🪶', name: '검은깃털', probability: 0.20, reward: 8, color: 'black' },
+            WITHERED_ROSE: { id: 'witheredRose', emoji: '🥀', name: '빨간 장미', probability: 0.18, reward: 12, color: 'red' },
+            TREASURE_KEY: { id: 'treasureKey', emoji: '🗝️', name: '황금 열쇠', probability: 0.15, reward: 18, color: 'gold' },
+            BLOODY_CROWN: { id: 'bloodyCrown', emoji: '👑', name: '핏빛 황금 왕관', probability: 0.10, reward: 30, color: 'red' },
+            CURSED_APPLE: { id: 'cursedApple', emoji: '🍎', name: '검은 사과', probability: 0.07, reward: 50, color: 'black' },
+            BLACK_DIAMOND: { id: 'blackDiamond', emoji: '💎', name: '검은 다이아', probability: 0.05, reward: 100, color: 'black' },
+            JOKER: { id: 'joker', emoji: '🃏', name: '조커카드', probability: 0.02, reward: 0, color: 'wild' }
+        };
+
+        // 족보 정의
+        const HANDS = {
+            NO_MATCH: { name: '노매치', multiplier: 0, isJackpot: false, description: '-' },
+            BLOOD_THREE: { name: '블러드 쓰리페어', multiplier: 12, isJackpot: true, description: '🍄🥀👑' },
+            DARK_THREE: { name: '다크 쓰리페어', multiplier: 10, isJackpot: true, description: '🪶🍎💎' },
+            GOLD_THREE: { name: '골드 쓰리페어', multiplier: 15, isJackpot: true, description: '🗝️👑🃏' },
+            THREE_OF_A_KIND: { name: '쓰리오브어카인드', multiplier: 8, isJackpot: true, description: '같은 문양 3개' },
+            RAINBOW: { name: '레인보우', multiplier: 5, isJackpot: false, description: '모든 문양 다름' },
+            LOW_STRAIGHT: { name: '로우스트레이트', multiplier: 6, isJackpot: false, description: '🍄🪶🥀' },
+            FULL_HOUSE: { name: '풀하우스', multiplier: 15, isJackpot: false, description: '3개+2개 조합' },
+            HIGH_STRAIGHT: { name: '하이스트레이트', multiplier: 25, isJackpot: false, description: '🗝️👑🍎💎' },
+            FOUR_OF_A_KIND: { name: '포오브어카인드', multiplier: 50, isJackpot: true, description: '같은 문양 4개' },
+            BLACK_DEAL: { name: '블랙 딜', multiplier: 25, isJackpot: false, description: '💎💎+ (조커불가)' },
+            ROYAL_FLUSH: { name: '로열플러시', multiplier: 200, isJackpot: false, description: '🍎💎🃏' },
+            FIVE_OF_A_KIND: { name: '파이브오브어카인드', multiplier: 500, isJackpot: true, description: '같은 문양 5개' }
+        };
+
+        const SLOT_MULTIPLIERS = { 3: 1.0, 4: 2.5, 5: 5.0 };
+        const SPIN_SYMBOLS = Object.keys(SYMBOLS);
+
+        function SlotGame() {
+            const [gameState, setGameState] = useState({
+                coins: 400, // 시작금 400코인
+                activeSlots: 3,
+                slots: [null, null, null, null, null],
+                spinningSlots: [null, null, null, null, null],
+                remainingRespins: 3, // 기본 3회
+                probabilityBonus: {},
+                phase: 'READY',
+                selectedSlots: [],
+                currentHand: null,
+                currentReward: 0,
+                message: '🎰 스핀을 시작하세요! 🎰',
+                isSpinning: false,
+                showCelebration: false
+            });
+
+            // 최대 선택 가능한 슬롯 수 계산
+            const getMaxSelections = useCallback((activeSlots) => {
+                return activeSlots - 1; // 활성 슬롯 - 1개까지 고정 가능
+            }, []);
+
+            // 스핀 애니메이션
+            useEffect(() => {
+                let interval;
+                if (gameState.isSpinning) {
+                    interval = setInterval(() => {
+                        setGameState(prev => {
+                            const newSpinning = [...prev.spinningSlots];
+                            for (let i = 0; i < prev.activeSlots; i++) {
+                                if (!prev.selectedSlots.includes(i)) {
+                                    newSpinning[i] = SPIN_SYMBOLS[Math.floor(Math.random() * SPIN_SYMBOLS.length)];
+                                }
+                            }
+                            return { ...prev, spinningSlots: newSpinning };
+                        });
+                    }, 100);
+                }
+                return () => clearInterval(interval);
+            }, [gameState.isSpinning, gameState.selectedSlots]);
+
+            // 축하 효과 자동 제거
+            useEffect(() => {
+                if (gameState.showCelebration) {
+                    const timer = setTimeout(() => {
+                        setGameState(prev => ({ ...prev, showCelebration: false }));
+                    }, 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [gameState.showCelebration]);
+
+            // 슬롯 활성화 체크
+            const isSlotActive = useCallback((index) => {
+                return index < gameState.activeSlots;
+            }, [gameState.activeSlots]);
+
+            // 잭팟 여부 체크
+            const isJackpotForSlots = useCallback((hand, activeSlots) => {
+                const handInfo = HANDS[hand];
+                if (!handInfo.isJackpot) return false;
+                
+                if (activeSlots === 3) {
+                    return ['THREE_OF_A_KIND', 'BLOOD_THREE', 'DARK_THREE', 'GOLD_THREE'].includes(hand);
+                } else if (activeSlots === 4) {
+                    return hand === 'FOUR_OF_A_KIND';
+                } else if (activeSlots === 5) {
+                    return hand === 'FIVE_OF_A_KIND';
+                }
+                return false;
+            }, []);
+
+            // 축하 효과 트리거
+            const triggerCelebration = useCallback((reward) => {
+                if (reward >= 100) {
+                    setGameState(prev => ({ ...prev, showCelebration: true }));
+                }
+            }, []);
+
+            // 가중치 랜덤 선택
+            const weightedRandom = useCallback((weights) => {
+                const total = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
+                let random = Math.random() * total;
+                
+                for (const [key, weight] of Object.entries(weights)) {
+                    random -= weight;
+                    if (random <= 0) return key;
+                }
+                return Object.keys(weights)[0];
+            }, []);
+
+            // 문양 생성
+            const generateSymbol = useCallback(() => {
+                const weights = {};
+                Object.entries(SYMBOLS).forEach(([key, symbol]) => {
+                    weights[key] = symbol.probability + (gameState.probabilityBonus[key] || 0);
+                });
+                return weightedRandom(weights);
+            }, [gameState.probabilityBonus, weightedRandom]);
+
+            // 일반 족보 판정
+            const evaluateHandNormal = useCallback((symbols) => {
+                if (symbols.length === 0) return 'NO_MATCH';
+
+                const counts = {};
+                symbols.forEach(symbol => {
+                    counts[symbol] = (counts[symbol] || 0) + 1;
+                });
+
+                const sortedCounts = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+                const maxCount = sortedCounts[0][1];
+                const uniqueCount = Object.keys(counts).length;
+
+                // 5개 동일
+                if (maxCount >= 5) return 'FIVE_OF_A_KIND';
+                // 4개 동일
+                if (maxCount >= 4) return 'FOUR_OF_A_KIND';
+                // 로열플러시
+                if (counts.CURSED_APPLE && counts.BLACK_DIAMOND && counts.JOKER) return 'ROYAL_FLUSH';
+                // 블랙 딜 (조커 불가)
+                if (counts.BLACK_DIAMOND >= 2) return 'BLACK_DEAL';
+                // 하이스트레이트
+                if (symbols.length >= 4 && counts.TREASURE_KEY && counts.BLOODY_CROWN && 
+                    counts.CURSED_APPLE && counts.BLACK_DIAMOND) return 'HIGH_STRAIGHT';
+                // 풀하우스
+                if (symbols.length >= 5 && sortedCounts.length >= 2 && 
+                    sortedCounts[0][1] >= 3 && sortedCounts[1][1] >= 2) return 'FULL_HOUSE';
+                // 골드 쓰리페어 (열쇠, 왕관, 조커)
+                if (counts.TREASURE_KEY && counts.BLOODY_CROWN && counts.JOKER) return 'GOLD_THREE';
+                // 블러드 쓰리페어 (버섯, 장미, 왕관)
+                if (counts.MUSHROOM && counts.WITHERED_ROSE && counts.BLOODY_CROWN) return 'BLOOD_THREE';
+                // 다크 쓰리페어 (깃털, 사과, 다이아)
+                if (counts.BLACK_FEATHER && counts.CURSED_APPLE && counts.BLACK_DIAMOND) return 'DARK_THREE';
+                // 3개 동일
+                if (maxCount >= 3) return 'THREE_OF_A_KIND';
+                // 로우스트레이트
+                if (symbols.length >= 3 && counts.MUSHROOM && counts.BLACK_FEATHER && counts.WITHERED_ROSE) return 'LOW_STRAIGHT';
+                // 레인보우
+                if (uniqueCount === symbols.length && symbols.length >= 3) return 'RAINBOW';
+
+                return 'NO_MATCH';
+            }, []);
+
+            // 조커 처리 포함 족보 판정
+            const evaluateHandWithJokers = useCallback((symbols) => {
+                // 먼저 블랙딜 체크 (조커 불가)
+                const counts = {};
+                symbols.forEach(symbol => {
+                    counts[symbol] = (counts[symbol] || 0) + 1;
+                });
+                
+                // 블랙딜은 조커와 상관없이 순수 다이아 2개 이상으로만 성립
+                if (counts.BLACK_DIAMOND >= 2) {
+                    return 'BLACK_DEAL';
+                }
+                
+                const nonJokers = symbols.filter(s => s !== 'JOKER');
+                const jokerCount = symbols.length - nonJokers.length;
+                
+                if (jokerCount === 0) {
+                    return evaluateHandNormal(symbols);
+                }
+                
+                let bestHand = 'NO_MATCH';
+                let bestMultiplier = 0;
+                
+                const possibleSymbols = Object.keys(SYMBOLS).filter(s => s !== 'JOKER');
+                
+                function tryAllCombinations(remainingJokers, currentSymbols) {
+                    if (remainingJokers === 0) {
+                        const hand = evaluateHandNormal(currentSymbols);
+                        // 블랙딜은 조커로 만들 수 없으므로 제외
+                        if (hand !== 'BLACK_DEAL' && HANDS[hand].multiplier > bestMultiplier) {
+                            bestHand = hand;
+                            bestMultiplier = HANDS[hand].multiplier;
+                        }
+                        return;
+                    }
+                    
+                    for (const symbol of possibleSymbols) {
+                        tryAllCombinations(remainingJokers - 1, [...currentSymbols, symbol]);
+                    }
+                }
+                
+                tryAllCombinations(jokerCount, [...nonJokers]);
+                return bestHand;
+            }, [evaluateHandNormal]);
+
+            // 족보 판정 메인 함수
+            const evaluateHand = useCallback((slots, activeSlots) => {
+                const activeSymbols = slots.slice(0, activeSlots).filter(s => s !== null);
+                return evaluateHandWithJokers(activeSymbols);
+            }, [evaluateHandWithJokers]);
+
+            // 보상 계산
+            const calculateReward = useCallback((hand, slots, activeSlots) => {
+                const handInfo = HANDS[hand];
+                if (!handInfo || handInfo.multiplier === 0) return 0;
+
+                const activeSymbols = slots.slice(0, activeSlots).filter(s => s !== null);
+                const nonJokerSymbols = activeSymbols.filter(symbolKey => symbolKey !== 'JOKER');
+                
+                let baseReward;
+                if (nonJokerSymbols.length > 0) {
+                    baseReward = Math.min(...nonJokerSymbols.map(symbolKey => SYMBOLS[symbolKey].reward));
+                } else {
+                    baseReward = SYMBOLS.MUSHROOM.reward;
+                }
+
+                const finalReward = Math.floor(baseReward * handInfo.multiplier * SLOT_MULTIPLIERS[activeSlots]);
+                
+                console.log('보상 계산:', {
+                    hand: handInfo.name,
+                    activeSymbols: activeSymbols.map(s => SYMBOLS[s].name),
+                    baseReward,
+                    handMultiplier: handInfo.multiplier,
+                    slotMultiplier: SLOT_MULTIPLIERS[activeSlots],
+                    finalReward
+                });
+
+                return finalReward;
+            }, []);
+
+            // 리스핀 비용 계산
+            const getResponCost = useCallback(() => {
+                return gameState.selectedSlots.length * 20;
+            }, [gameState.selectedSlots]);
+
+            // 스핀 실행
+            const executeSpin = useCallback(() => {
+                if (gameState.coins < 10) return;
+                
+                setGameState(prev => ({ 
+                    ...prev, 
+                    coins: prev.coins - 10,
+                    phase: 'SPINNING', 
+                    message: '🎰 스핀 중... 🎰',
+                    isSpinning: true
+                }));
+
+                setTimeout(() => {
+                    setGameState(prev => {
+                        const newSlots = [...prev.slots];
+                        
+                        for (let i = 0; i < prev.activeSlots; i++) {
+                            if (!prev.selectedSlots.includes(i)) {
+                                newSlots[i] = generateSymbol();
+                            }
+                        }
+
+                        const hand = evaluateHand(newSlots, prev.activeSlots);
+                        const reward = calculateReward(hand, newSlots, prev.activeSlots);
+                        const handInfo = HANDS[hand];
+                        const isJackpot = isJackpotForSlots(hand, prev.activeSlots);
+
+                        if (reward >= 100) {
+                            triggerCelebration(reward);
+                        }
+
+                        return {
+                            ...prev,
+                            slots: newSlots,
+                            spinningSlots: [...newSlots],
+                            currentHand: hand,
+                            currentReward: reward,
+                            phase: isJackpot ? 'JACKPOT_CHOICE' : 
+                                   (prev.remainingRespins > 0 ? 'RESPIN_CHOICE' : 'GAME_OVER'),
+                            message: isJackpot ? 
+                                `🎉 ${handInfo.name} 잭팟! 보상: ${reward}코인 - 선택하세요!` : 
+                                `${handInfo.name} ${handInfo.description} - ${reward} 코인`,
+                            isSpinning: false
+                        };
+                    });
+                }, 2000);
+            }, [generateSymbol, evaluateHand, calculateReward, gameState.coins, isJackpotForSlots, triggerCelebration]);
+
+            // 리스핀 실행
+            const executeRespin = useCallback(() => {
+                const respinCost = getResponCost();
+                if (gameState.coins < respinCost) return;
+
+                setGameState(prev => {
+                    const newBonus = { ...prev.probabilityBonus };
+                    prev.selectedSlots.forEach(index => {
+                        const symbol = prev.slots[index];
+                        if (symbol) {
+                            newBonus[symbol] = (newBonus[symbol] || 0) + 0.03;
+                        }
+                    });
+
+                    const newSpinning = [...prev.spinningSlots];
+                    prev.selectedSlots.forEach(index => {
+                        newSpinning[index] = prev.slots[index];
+                    });
+
+                    return {
+                        ...prev,
+                        coins: prev.coins - respinCost,
+                        phase: 'SPINNING',
+                        probabilityBonus: newBonus,
+                        remainingRespins: prev.remainingRespins - 1,
+                        message: `🔄 리스핀 중... (-${respinCost}코인) 🔄`,
+                        isSpinning: true,
+                        spinningSlots: newSpinning
+                    };
+                });
+
+                setTimeout(() => {
+                    setGameState(prev => {
+                        const newSlots = [...prev.slots];
+                        
+                        for (let i = 0; i < prev.activeSlots; i++) {
+                            if (!prev.selectedSlots.includes(i)) {
+                                newSlots[i] = generateSymbol();
+                            }
+                        }
+
+                        const hand = evaluateHand(newSlots, prev.activeSlots);
+                        const reward = calculateReward(hand, newSlots, prev.activeSlots);
+                        const handInfo = HANDS[hand];
+                        const isJackpot = isJackpotForSlots(hand, prev.activeSlots);
+
+                        if (reward >= 100) {
+                            triggerCelebration(reward);
+                        }
+
+                        return {
+                            ...prev,
+                            slots: newSlots,
+                            spinningSlots: [...newSlots],
+                            currentHand: hand,
+                            currentReward: reward,
+                            phase: isJackpot ? 'JACKPOT_CHOICE' : 
+                                   (prev.remainingRespins > 0 ? 'RESPIN_CHOICE' : 'GAME_OVER'),
+                            message: isJackpot ? 
+                                `🎉 ${handInfo.name} 잭팟! 보상: ${reward}코인 - 선택하세요!` : 
+                                `${handInfo.name} ${handInfo.description} - ${reward} 코인`,
+                            isSpinning: false,
+                            selectedSlots: []
+                        };
+                    });
+                }, 2000);
+            }, [generateSymbol, evaluateHand, calculateReward, isJackpotForSlots, triggerCelebration, getResponCost]);
+
+            // 보상 받고 턴 종료
+            const takeRewardAndEnd = useCallback(() => {
+                setGameState(prev => {
+                    const newSlots = [...prev.slots];
+                    const newSpinningSlots = [...prev.spinningSlots];
+                    
+                    for (let i = 3; i < 5; i++) {
+                        newSlots[i] = null;
+                        newSpinningSlots[i] = null;
+                    }
+                    
+                    return {
+                        ...prev,
+                        coins: prev.coins + prev.currentReward,
+                        slots: newSlots,
+                        spinningSlots: newSpinningSlots,
+                        activeSlots: 3,
+                        phase: 'READY',
+                        remainingRespins: 3, // 기본 3회로 리셋
+                        probabilityBonus: {},
+                        selectedSlots: [],
+                        currentHand: null,
+                        currentReward: 0,
+                        message: `💰 ${prev.currentReward}코인 획득! 새로운 턴을 시작하세요!`
+                    };
+                });
+            }, []);
+
+            // 보상 포기하고 슬롯 확장
+            const expandSlotsAndContinue = useCallback(() => {
+                setGameState(prev => {
+                    const newActiveSlots = Math.min(prev.activeSlots + 1, 5);
+                    const newSlots = [null, null, null, null, null]; // 모든 슬롯 초기화
+                    const newSpinningSlots = [null, null, null, null, null]; // 스피닝 슬롯도 초기화
+                    
+                    return {
+                        ...prev,
+                        slots: newSlots,
+                        spinningSlots: newSpinningSlots,
+                        activeSlots: newActiveSlots,
+                        phase: 'RESPIN_CHOICE',
+                        remainingRespins: 4, // 슬롯 확장시에만 4회
+                        selectedSlots: [],
+                        currentHand: null,
+                        currentReward: 0,
+                        message: `🎊 ${newActiveSlots}슬롯으로 확장! 모든 슬롯이 초기화되었습니다! (리스핀 4회)`
+                    };
+                });
+            }, []);
+
+            // 일반 턴 종료
+            const endTurn = useCallback(() => {
+                setGameState(prev => {
+                    const newSlots = [...prev.slots];
+                    const newSpinningSlots = [...prev.spinningSlots];
+                    
+                    for (let i = 3; i < 5; i++) {
+                        newSlots[i] = null;
+                        newSpinningSlots[i] = null;
+                    }
+                    
+                    return {
+                        ...prev,
+                        coins: prev.coins + prev.currentReward,
+                        slots: newSlots,
+                        spinningSlots: newSpinningSlots,
+                        activeSlots: 3,
+                        phase: 'READY',
+                        remainingRespins: 3, // 기본 3회로 리셋
+                        probabilityBonus: {},
+                        selectedSlots: [],
+                        currentHand: null,
+                        currentReward: 0,
+                        message: prev.currentReward > 0 ? 
+                            `💰 ${prev.currentReward}코인 획득! 새로운 턴을 시작하세요!` :
+                            '🎰 새로운 턴을 시작하세요!'
+                    };
+                });
+            }, []);
+
+            // 슬롯 선택 토글
+            const toggleSlotSelection = useCallback((index) => {
+                if (gameState.phase !== 'RESPIN_CHOICE' || !isSlotActive(index)) return;
+                
+                const symbol = gameState.slots[index];
+                if (!symbol) return;
+                
+                setGameState(prev => {
+                    const { selectedSlots, activeSlots } = prev;
+                    const maxSelections = getMaxSelections(activeSlots);
+                    
+                    const newSelection = selectedSlots.includes(index) 
+                        ? selectedSlots.filter(i => i !== index)
+                        : selectedSlots.length < maxSelections ? [...selectedSlots, index] : selectedSlots;
+                    
+                    return { ...prev, selectedSlots: newSelection };
+                });
+            }, [gameState.phase, gameState.slots, isSlotActive, getMaxSelections]);
+
+            // 문양 색상 클래스 가져오기
+            const getSymbolColorClass = useCallback((symbol) => {
+                if (!symbol) return '';
+                const symbolInfo = SYMBOLS[symbol];
+                switch (symbolInfo.color) {
+                    case 'red': return 'symbol-red';
+                    case 'black': return 'symbol-black';
+                    case 'gold': return 'symbol-gold';
+                    case 'wild': return 'symbol-wild';
+                    default: return '';
+                }
+            }, []);
+
+            return (
+                <div className="min-h-screen bg-gradient-to-b from-purple-900 via-red-900 to-black text-white p-4 relative overflow-hidden">
+                    {/* 축하 효과 */}
+                    {gameState.showCelebration && (
+                        <div className="fixed inset-0 z-50 pointer-events-none">
+                            <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/20 to-red-400/20 animate-pulse"></div>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="text-8xl animate-bounce">🎉</div>
+                            </div>
+                            {[...Array(20)].map((_, i) => (
+                                <div
+                                    key={i}
+                                    className="absolute animate-ping"
+                                    style={{
+                                        left: `${Math.random() * 100}%`,
+                                        top: `${Math.random() * 100}%`,
+                                        animationDelay: `${Math.random() * 2}s`,
+                                        fontSize: `${Math.random() * 20 + 10}px`
+                                    }}
+                                >
+                                    ✨
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="max-w-6xl mx-auto relative z-10">
+                        {/* 헤더 */}
+                        <div className="text-center mb-8">
+                            <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-red-400 to-yellow-400 bg-clip-text text-transparent">
+                                🎰 잔혹동화 슬롯머신 🎰
+                            </h1>
+                            <p className="text-lg text-gray-300">잭팟 달성 시: 안전한 보상 vs 위험한 도전</p>
+                            <p className="text-sm text-red-300 mt-2">💰 리스핀 비용: 고정 슬롯 수 × 20코인</p>
+                            <p className="text-xs text-orange-300 mt-1">⚠️ 블랙딜: 조커로 대체 불가능한 특수 족보</p>
+                        </div>
+
+                        {/* 게임 정보 */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div className="bg-gradient-to-r from-yellow-600 to-yellow-800 rounded-lg p-4 text-center">
+                                <div className="text-2xl font-bold">{gameState.coins}</div>
+                                <div className="text-sm">코인</div>
+                            </div>
+                            <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg p-4 text-center">
+                                <div className="text-2xl font-bold">{gameState.activeSlots}/5</div>
+                                <div className="text-sm">활성 슬롯</div>
+                            </div>
+                            <div className="bg-gradient-to-r from-green-600 to-green-800 rounded-lg p-4 text-center">
+                                <div className="text-2xl">{'🕯️'.repeat(gameState.remainingRespins)}</div>
+                                <div className="text-sm">리스핀 ({gameState.remainingRespins}회)</div>
+                            </div>
+                        </div>
+
+                        {/* 메시지 */}
+                        <div className="text-center mb-6 p-4 bg-gray-800 rounded-lg">
+                            <p className="text-xl font-semibold text-yellow-300">{gameState.message}</p>
+                            {gameState.currentHand && gameState.currentReward > 0 && (
+                                <div className="text-sm text-gray-300 mt-2">
+                                    <p>배율: {HANDS[gameState.currentHand].multiplier}x × 슬롯배율: {SLOT_MULTIPLIERS[gameState.activeSlots]}x</p>
+                                    <p className="text-xs text-blue-300">
+                                        계산식: 최저문양가격 × 족보배율 × 슬롯배율 = 보상
+                                    </p>
+                                </div>
+                            )}
+                            {gameState.phase === 'RESPIN_CHOICE' && gameState.selectedSlots.length > 0 && (
+                                <p className="text-sm text-orange-300 mt-2">
+                                    💸 리스핀 비용: {getResponCost()}코인 ({gameState.selectedSlots.length}개 × 20코인)
+                                </p>
+                            )}
+                            {gameState.phase === 'RESPIN_CHOICE' && gameState.selectedSlots.length === 0 && (
+                                <p className="text-sm text-blue-300 mt-2">
+                                    🎯 최대 {getMaxSelections(gameState.activeSlots)}개까지 고정 가능 (고정 없이도 리스핀 가능)
+                                </p>
+                            )}
+                        </div>
+
+                        {/* 슬롯 머신 */}
+                        <div className="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl p-8 mb-6 border-4 border-yellow-600">
+                            <div className="flex justify-center space-x-6 mb-6">
+                                {[0, 1, 2, 3, 4].map((index) => {
+                                    const isActive = isSlotActive(index);
+                                    const isSelected = gameState.selectedSlots.includes(index);
+                                    const symbol = gameState.isSpinning ? gameState.spinningSlots[index] : gameState.slots[index];
+                                    
+                                    return (
+                                        <div
+                                            key={index}
+                                            className={`
+                                                relative w-24 h-24 rounded-xl border-4 flex items-center justify-center text-4xl font-bold
+                                                transition-all duration-300
+                                                ${!isActive ? 'border-gray-600 bg-gray-700 opacity-50 cursor-not-allowed' : 
+                                                  !symbol ? 'border-blue-400 bg-blue-900 cursor-default' :
+                                                  isSelected ? 'border-yellow-500 bg-yellow-900 ring-4 ring-yellow-300 cursor-pointer' :
+                                                  'border-blue-500 bg-blue-900 hover:bg-blue-800 cursor-pointer'}
+                                                ${gameState.isSpinning && !isSelected && isActive ? 'animate-pulse' : ''}
+                                            `}
+                                            onClick={() => symbol ? toggleSlotSelection(index) : null}
+                                        >
+                                            {isActive && symbol ? 
+                                                <span className={`
+                                                    ${gameState.isSpinning && !isSelected ? 'animate-bounce' : ''}
+                                                    ${getSymbolColorClass(symbol)}
+                                                `}>
+                                                    {SYMBOLS[symbol].emoji}
+                                                </span> : 
+                                                !isActive ? '🔒' : 
+                                                <span className="text-3xl text-blue-300 animate-pulse">✨</span>
+                                            }
+                                            {isSelected && (
+                                                <div className="absolute -top-2 text-xs animate-ping">⭐</div>
+                                            )}
+                                            {symbol === 'JOKER' && (
+                                                <div className="absolute -bottom-2 text-xs animate-bounce">✨</div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* 활성 상태 표시 */}
+                            <div className="text-center text-sm text-gray-400 mb-4">
+                                <div className="flex justify-center space-x-6">
+                                    {[0, 1, 2, 3, 4].map((index) => {
+                                        const isActive = isSlotActive(index);
+                                        const symbol = gameState.slots[index];
+                                        return (
+                                            <div key={index} className="w-24 text-center">
+                                                {!isActive ? 
+                                                    <span className="text-red-400">🔴 잠김</span> : 
+                                                    symbol ? 
+                                                        <span className="text-green-400">🟢 활성</span> :
+                                                        <span className="text-blue-400">⭐ 신규</span>
+                                                }
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 보상 계산 예시 */}
+                        <div className="mb-6 p-4 bg-gradient-to-r from-blue-900 to-indigo-900 rounded-lg border-2 border-blue-500">
+                            <h3 className="text-lg font-bold text-blue-300 mb-3 text-center">📊 보상 계산 공식</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-center">
+                                <div className="p-2 bg-blue-800 rounded">
+                                    <div className="font-bold text-yellow-300">기본 보상</div>
+                                    <div>조합 내 최저 문양 가격</div>
+                                    <div className="text-xs text-gray-300">(조커 제외)</div>
+                                </div>
+                                <div className="p-2 bg-blue-800 rounded">
+                                    <div className="font-bold text-yellow-300">족보 배율</div>
+                                    <div>쓰리오브어카인드: 8배</div>
+                                    <div className="text-xs text-gray-300">블랙딜: 25배 (조커불가)</div>
+                                </div>
+                                <div className="p-2 bg-blue-800 rounded">
+                                    <div className="font-bold text-yellow-300">슬롯 배율</div>
+                                    <div>3슬롯: 1배 / 4슬롯: 2.5배</div>
+                                    <div className="text-xs text-gray-300">5슬롯: 5배</div>
+                                </div>
+                            </div>
+                            <div className="mt-4 text-center text-yellow-300 font-bold">
+                                최종 보상 = 기본보상 × 족보배율 × 슬롯배율
+                            </div>
+                        </div>
+
+                        {/* 리스핀 시스템 안내 */}
+                        <div className="mb-6 p-4 bg-gradient-to-r from-orange-900 to-red-900 rounded-lg border-2 border-orange-500">
+                            <h3 className="text-lg font-bold text-orange-300 mb-3 text-center">🔄 리스핀 시스템</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-center">
+                                <div className="p-2 bg-orange-800 rounded">
+                                    <div className="font-bold text-yellow-300">기본 리스핀</div>
+                                    <div>일반 게임: 3회</div>
+                                    <div className="text-xs text-gray-300">고정 없이도 리스핀 가능</div>
+                                </div>
+                                <div className="p-2 bg-orange-800 rounded">
+                                    <div className="font-bold text-yellow-300">확장 리스핀</div>
+                                    <div>슬롯 확장시: 4회</div>
+                                    <div className="text-xs text-gray-300">모든 슬롯 초기화</div>
+                                </div>
+                            </div>
+                            <div className="mt-3 text-center text-xs text-blue-300">
+                                💡 팁: 아무것도 고정하지 않고 리스핀해도 새로운 조합을 시도할 수 있습니다!
+                            </div>
+                        </div>
+
+                        {/* 문양별 보상 표 */}
+                        <div className="mb-6 p-4 bg-gradient-to-r from-gray-800 to-gray-900 rounded-lg border-2 border-gray-600">
+                            <h3 className="text-lg font-bold text-gray-300 mb-3 text-center">💰 문양별 기본 보상</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                                {Object.entries(SYMBOLS).map(([key, symbol]) => (
+                                    <div key={key} className="flex items-center justify-between bg-gray-700 rounded px-2 py-1">
+                                        <span>
+                                            <span className={getSymbolColorClass(key)}>
+                                                {symbol.emoji}
+                                            </span> {symbol.name}
+                                        </span>
+                                        <span className="font-bold text-yellow-400">{symbol.reward}코인</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 컨트롤 버튼 */}
+                        <div className="flex flex-wrap justify-center gap-4 mb-8">
+                            {/* 스핀 시작 */}
+                            {gameState.phase === 'READY' && (
+                                <button
+                                    onClick={executeSpin}
+                                    disabled={gameState.coins < 10}
+                                    className="px-8 py-4 bg-gradient-to-r from-green-600 to-green-800 hover:from-green-700 hover:to-green-900 rounded-lg font-bold text-xl disabled:opacity-50 transform hover:scale-105 transition-all"
+                                >
+                                    🎰 스핀 시작 (10 코인)
+                                </button>
+                            )}
+
+                            {/* 잭팟 선택 */}
+                            {gameState.phase === 'JACKPOT_CHOICE' && (
+                                <div className="flex flex-col items-center gap-4 w-full">
+                                    <div className="text-center p-4 bg-gradient-to-r from-yellow-900 to-orange-900 rounded-lg border-2 border-yellow-500 animate-pulse">
+                                        <h3 className="text-xl font-bold text-yellow-300 mb-2">🎯 잭팟 달성!</h3>
+                                        <p className="text-lg text-white">현재 보상: <span className="font-bold text-yellow-400">{gameState.currentReward} 코인</span></p>
+                                        <p className="text-sm text-gray-300 mt-2">선택하세요: 안전한 보상 vs 위험한 도전</p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            {gameState.activeSlots === 3 && '4슬롯 확장: 모든 슬롯 초기화 + 리스핀 4회'}
+                                            {gameState.activeSlots === 4 && '5슬롯 확장: 모든 슬롯 초기화 + 리스핀 4회'}
+                                            {gameState.activeSlots === 5 && '최대 슬롯 달성!'}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-4">
+                                        <button
+                                            onClick={takeRewardAndEnd}
+                                            className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-800 hover:from-green-700 hover:to-green-900 rounded-lg font-bold transform hover:scale-105 transition-all"
+                                        >
+                                            💰 보상 받고 턴 종료
+                                        </button>
+                                        {gameState.activeSlots < 5 && (
+                                            <button
+                                                onClick={expandSlotsAndContinue}
+                                                className="px-6 py-3 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 rounded-lg font-bold transform hover:scale-105 transition-all animate-pulse"
+                                            >
+                                                🎊 보상 포기하고 {gameState.activeSlots + 1}슬롯으로 확장
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 리스핀 선택 */}
+                            {gameState.phase === 'RESPIN_CHOICE' && (
+                                <>
+                                    <button
+                                        onClick={executeRespin}
+                                        disabled={gameState.remainingRespins <= 0 || gameState.coins < getResponCost()}
+                                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900 rounded-lg font-bold disabled:opacity-50 transform hover:scale-105 transition-all"
+                                    >
+                                        🔄 리스핀 ({getResponCost()}코인)
+                                    </button>
+                                    <button
+                                        onClick={endTurn}
+                                        className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 rounded-lg font-bold transform hover:scale-105 transition-all"
+                                    >
+                                        🏁 턴 종료
+                                    </button>
+                                </>
+                            )}
+
+                            {/* 게임 오버 */}
+                            {gameState.phase === 'GAME_OVER' && (
+                                <button
+                                    onClick={endTurn}
+                                    className="px-8 py-4 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 rounded-lg font-bold text-xl transform hover:scale-105 transition-all"
+                                >
+                                    ➡️ 다음 턴
+                                </button>
+                            )}
+                        </div>
+
+                        {/* 잭팟 조건 안내 */}
+                        <div className="mb-6 p-4 bg-gradient-to-r from-red-900 to-purple-900 rounded-lg border-2 border-red-500">
+                            <h3 className="text-lg font-bold text-red-300 mb-3 text-center">🎯 슬롯별 잭팟 조건</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                <div className="text-center p-2 bg-red-800 rounded">
+                                    <div className="font-bold text-yellow-300">3슬롯</div>
+                                    <div>
+                                        <span className="symbol-red">🍄🍄🍄</span> 쓰리오브어카인드
+                                    </div>
+                                    <div>
+                                        <span className="symbol-red">🍄🥀👑</span> / <span className="symbol-black">🪶🍎💎</span> / <span className="symbol-gold">🗝️</span><span className="symbol-red">👑</span><span className="symbol-wild">🃏</span>
+                                    </div>
+                                </div>
+                                <div className="text-center p-2 bg-red-800 rounded">
+                                    <div className="font-bold text-yellow-300">4슬롯</div>
+                                    <div>
+                                        <span className="symbol-red">🍄🍄🍄🍄</span> 포오브어카인드
+                                    </div>
+                                    <div className="text-xs text-gray-300">(50배 × 2.5배 = 125배!)</div>
+                                </div>
+                                <div className="text-center p-2 bg-red-800 rounded">
+                                    <div className="font-bold text-yellow-300">5슬롯</div>
+                                    <div>
+                                        <span className="symbol-red">🍄🍄🍄🍄🍄</span> 파이브오브어카인드
+                                    </div>
+                                    <div className="text-xs text-gray-300">(500배 × 5배 = 2500배!)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 족보 가이드 */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="bg-gradient-to-br from-red-900 to-red-800 rounded-lg p-6">
+                                <h3 className="text-xl font-bold mb-4 text-yellow-400">🎯 잭팟 족보</h3>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                        <span>
+                                            <span className="symbol-red">🍄</span>
+                                            <span className="symbol-red">🥀</span>
+                                            <span className="symbol-red">👑</span> 블러드 쓰리페어
+                                        </span>
+                                        <span className="font-bold text-red-300">12배</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>
+                                            <span className="symbol-black">🪶</span>
+                                            <span className="symbol-black">🍎</span>
+                                            <span className="symbol-black">💎</span> 다크 쓰리페어
+                                        </span>
+                                        <span className="font-bold text-gray-300">10배</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>
+                                            <span className="symbol-gold">🗝️</span>
+                                            <span className="symbol-red">👑</span>
+                                            <span className="symbol-wild">🃏</span> 골드 쓰리페어
+                                        </span>
+                                        <span className="font-bold text-yellow-300">15배</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span><span className="symbol-red">🍄🍄🍄</span> 쓰리오브어카인드</span>
+                                        <span className="font-bold text-blue-300">8배</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span><span className="symbol-red">🍄🍄🍄🍄</span> 포오브어카인드</span>
+                                        <span className="font-bold text-purple-300">50배</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span><span className="symbol-red">🍄🍄🍄🍄🍄</span> 파이브오브어카인드</span>
+                                        <span className="font-bold text-pink-300">500배</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-gradient-to-br from-purple-900 to-purple-800 rounded-lg p-6">
+                                <h3 className="text-xl font-bold mb-4 text-yellow-400">✨ 특수 족보</h3>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                        <span>
+                                            <span className="symbol-black">🍎</span>
+                                            <span className="symbol-black">💎</span>
+                                            <span className="symbol-wild">🃏</span> 로열플러시
+                                        </span>
+                                        <span className="font-bold text-yellow-300">200배</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span><span className="symbol-black">💎💎</span>+ 블랙 딜</span>
+                                        <span className="font-bold text-red-400">25배</span>
+                                    </div>
+                                    <div className="text-xs text-orange-300 mt-1 mb-2">⚠️ 조커 대체 불가능</div>
+                                    <div className="flex justify-between">
+                                        <span>
+                                            <span className="symbol-gold">🗝️</span>
+                                            <span className="symbol-red">👑</span>
+                                            <span className="symbol-black">🍎</span>
+                                            <span className="symbol-black">💎</span> 하이스트레이트
+                                        </span>
+                                        <span className="font-bold text-orange-300">25배</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>
+                                            <span className="symbol-red">🍄🍄🍄🥀🥀</span> 풀하우스
+                                        </span>
+                                        <span className="font-bold text-green-300">15배</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>
+                                            <span className="symbol-red">🍄</span>
+                                            <span className="symbol-black">🪶</span>
+                                            <span className="symbol-red">🥀</span> 로우스트레이트
+                                        </span>
+                                        <span className="font-bold text-blue-300">6배</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>
+                                            <span className="symbol-red">🍄</span>
+                                            <span className="symbol-black">🪶</span>
+                                            <span className="symbol-red">🥀</span>
+                                            <span className="symbol-gold">🗝️</span>
+                                            <span className="symbol-red">👑</span> 레인보우
+                                        </span>
+                                        <span className="font-bold text-purple-300">5배</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<SlotGame />, document.getElementById('root'));
+    </script>
+</body>
+</html>
